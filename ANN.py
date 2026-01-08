@@ -1,7 +1,8 @@
 import numpy as np
-import pandas as pd
 
-# Simple binary classification dataset
+# -----------------------------
+# Dataset (Binary Classification)
+# -----------------------------
 X = np.array([
     [2, 60],
     [4, 70],
@@ -9,7 +10,7 @@ X = np.array([
     [8, 90],
     [1, 50],
     [9, 95]
-])
+], dtype=float)
 
 y = np.array([[0], [0], [1], [1], [0], [1]])
 
@@ -17,13 +18,17 @@ y = np.array([[0], [0], [1], [1], [0], [1]])
 X = X / np.max(X, axis=0)
 
 
-
+# -----------------------------
+# ANN From Scratch
+# -----------------------------
 class ANNFromScratch:
-    def __init__(self, input_dim, hidden_dim, output_dim, lr=0.1):
+    def __init__(self, input_dim, hidden_dim, output_dim, lr=0.05):
         np.random.seed(42)
         self.lr = lr
+
         self.W1 = np.random.randn(input_dim, hidden_dim) * 0.1
         self.b1 = np.zeros((1, hidden_dim))
+
         self.W2 = np.random.randn(hidden_dim, output_dim) * 0.1
         self.b2 = np.zeros((1, output_dim))
 
@@ -37,79 +42,72 @@ class ANNFromScratch:
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
 
-    def sigmoid_derivative(self, x):
-        return x * (1 - x)
-
+    # -----------------------------
+    # Forward Propagation
+    # -----------------------------
     def forward(self, X):
         self.z1 = np.dot(X, self.W1) + self.b1
         self.a1 = self.relu(self.z1)
+
         self.z2 = np.dot(self.a1, self.W2) + self.b2
-        return self.sigmoid(self.z2)
+        self.y_pred = self.sigmoid(self.z2)
 
-    def backward(self, X, y, y_pred):
-        error = y - y_pred
-        d_out = error * self.sigmoid_derivative(y_pred)
+        return self.y_pred
 
-        d_hidden = np.dot(d_out, self.W2.T) * self.relu_derivative(self.z1)
+    # -----------------------------
+    # Binary Cross-Entropy Loss
+    # -----------------------------
+    def compute_loss(self, y, y_pred):
+        eps = 1e-8  # avoid log(0)
+        return -np.mean(
+            y * np.log(y_pred + eps) + (1 - y) * np.log(1 - y_pred + eps)
+        )
 
-        self.W2 += np.dot(self.a1.T, d_out) * self.lr
-        self.b2 += np.sum(d_out, axis=0, keepdims=True) * self.lr
+    # -----------------------------
+    # Backpropagation
+    # -----------------------------
+    def backward(self, X, y):
+        m = X.shape[0]
 
-        self.W1 += np.dot(X.T, d_hidden) * self.lr
-        self.b1 += np.sum(d_hidden, axis=0, keepdims=True) * self.lr
+        # Output layer gradient
+        dz2 = self.y_pred - y
+        dW2 = np.dot(self.a1.T, dz2) / m
+        db2 = np.sum(dz2, axis=0, keepdims=True) / m
 
-    def train(self, X, y, epochs=5000):
+        # Hidden layer gradient
+        da1 = np.dot(dz2, self.W2.T)
+        dz1 = da1 * self.relu_derivative(self.z1)
+        dW1 = np.dot(X.T, dz1) / m
+        db1 = np.sum(dz1, axis=0, keepdims=True) / m
+
+        # Gradient Descent update
+        self.W2 -= self.lr * dW2
+        self.b2 -= self.lr * db2
+        self.W1 -= self.lr * dW1
+        self.b1 -= self.lr * db1
+
+    # -----------------------------
+    # Training Loop
+    # -----------------------------
+    def train(self, X, y, epochs=3000):
         for epoch in range(epochs):
             y_pred = self.forward(X)
-            loss = np.mean((y - y_pred) ** 2)
-            self.backward(X, y, y_pred)
+            loss = self.compute_loss(y, y_pred)
+            self.backward(X, y)
 
-            if epoch % 1000 == 0:
-                print(f"[Scratch] Epoch {epoch} | Loss: {loss:.4f}")
-
-
-scratch_model = ANNFromScratch(input_dim=2, hidden_dim=4, output_dim=1)
-scratch_model.train(X, y)
-
-scratch_preds = scratch_model.forward(X)
-print("\nScratch Model Predictions:")
-print(np.round(scratch_preds, 3))
+            if epoch % 500 == 0:
+                acc = np.mean((y_pred > 0.5) == y)
+                print(f"Epoch {epoch} | Loss: {loss:.4f} | Accuracy: {acc:.2f}")
 
 
+# -----------------------------
+# Train Model
+# -----------------------------
+model = ANNFromScratch(input_dim=2, hidden_dim=4, output_dim=1)
+model.train(X, y)
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.optimizers import Adam
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
-
-keras_model = Sequential([
-    Dense(16, activation='relu', input_shape=(X_train.shape[1],)),
-    Dense(8, activation='relu'),
-    Dense(1, activation='sigmoid')
-])
-
-keras_model.compile(
-    optimizer=Adam(learning_rate=0.001),
-    loss='binary_crossentropy',
-    metrics=['accuracy']
-)
-
-keras_model.fit(
-    X_train,
-    y_train,
-    epochs=30,
-    batch_size=8,
-    verbose=0
-)
-
-loss, acc = keras_model.evaluate(X_test, y_test, verbose=0)
-print(f"\n[Keras] Test Accuracy: {acc:.2f}")
+# Predictions
+preds = model.forward(X)
+print("\nFinal Predictions:")
+print(np.round(preds, 3))
+print("Predicted Classes:", (preds > 0.5).astype(int).ravel())
